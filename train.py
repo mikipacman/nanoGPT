@@ -275,7 +275,7 @@ while True:
                 "lr": lr,
                 "mfu": running_mfu*100, # convert to percentage
             })
-            if prompt_dir: wandb.log({"midi": wandb.Html(html), "success_percent": sucess_percent})
+            if prompt_dir: wandb.log({"midi": wandb.Html(html), "success_percent": sucess_percent, "iter": iter_num})
         if losses['val'] < best_val_loss or always_save_checkpoint:
             best_val_loss = losses['val']
             if iter_num > 0:
