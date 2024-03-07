@@ -1,7 +1,20 @@
 # Visualize midi in html
-import collections
-from typing import Dict
+import glob
+import os
+import random
+import string
+import sys
 
+from tqdm import tqdm
+
+sys.path.append("../")
+from scripts.txt_to_midi import single_txt_to_midi
+
+import collections
+import tempfile
+from typing import Dict
+import tiktoken
+import torch
 from midi_player import MIDIPlayer
 from midi_player.stylers import dark
 
@@ -65,6 +78,50 @@ document.addEventListener('DOMContentLoaded', function() {{
 """
 
     return html
+
+
+def file_content_to_midi(file_content, tmp):
+    random_string = ''.join(random.choice(string.ascii_lowercase) for _ in range(16))
+    txt_file = os.path.join(tmp, f"{random_string}.txt")
+    file_content = "\n".join(file_content.split("\n")[:-1] + ["end\n"])
+    open(txt_file, "w").write(file_content)
+    midi_file = os.path.join(tmp, f"{random_string}.mid")
+    single_txt_to_midi(txt_file, midi_file)
+    return midi_file
+
+
+# sample some songs for given prompts and generate html vis, Return (html, percent_success)
+@torch.no_grad()
+def sample_songs(model, device, prompt_dir, num_samples=3, max_new_tokens=1024, temperature=0.7, topk=200):
+    # tokenizer
+    enc = tiktoken.get_encoding("gpt2")
+    encode = lambda s: enc.encode(s, allowed_special={"<|endoftext|>"})
+    decode = lambda l: enc.decode(l)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        model.eval()
+        midis = collections.defaultdict(dict)
+        success = 0
+
+        prompts = glob.glob(os.path.join(prompt_dir, "*"))
+        for prompt_path in tqdm(prompts, desc="Sampling songs"):
+            song_name = os.path.basename(prompt_path).rsplit(".", 1)[0]
+            midis[song_name]["prompt"] = file_content_to_midi(open(prompt_path, "r").read(), tmp)
+            start_id = encode(open(prompt_path, "r").read())
+            x = (torch.tensor(start_id, dtype=torch.long, device=device)[None, ...])
+            y = model.generate(x, max_new_tokens, temperature=temperature, top_k=topk)
+            for i in range(num_samples):
+                try:
+                    file_content = decode(y[i].tolist())
+                    midi_file = file_content_to_midi(file_content, tmp)
+                except:
+                    print(f"Failed to convert {song_name} to MIDI")
+                    continue
+                success += 1
+                midis[song_name][f"sample_{i}"] = midi_file
+
+        model.train()
+        return html_midi_vis(midis), success / (num_samples * len(prompts))
 
 
 if __name__ == "__main__":

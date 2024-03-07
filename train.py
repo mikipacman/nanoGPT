@@ -28,11 +28,13 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed import init_process_group, destroy_process_group
 
 from model import GPTConfig, GPT
+from vis import sample_songs
 
 # -----------------------------------------------------------------------------
 # default config values designed to train a gpt2 (124M) on OpenWebText
 # I/O
 out_dir = 'out'
+prompt_dir = None
 eval_interval = 2000
 log_interval = 1
 eval_iters = 200
@@ -209,6 +211,7 @@ if compile:
 
 # wrap model into DDP container
 if ddp:
+    local_model = model
     model = DDP(model, device_ids=[ddp_local_rank])
 
 # helps estimate an arbitrarily accurate loss over either split using many batches
@@ -262,6 +265,7 @@ while True:
     # evaluate the loss on train/val sets and write checkpoints
     if iter_num % eval_interval == 0 and master_process:
         losses = estimate_loss()
+        if prompt_dir: html, sucess_percent = sample_songs(local_model, device, prompt_dir, max_new_tokens=1024)
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
         if wandb_log:
             wandb.log({
@@ -271,6 +275,7 @@ while True:
                 "lr": lr,
                 "mfu": running_mfu*100, # convert to percentage
             })
+            if prompt_dir: wandb.log({"midi": wandb.Html(html), "success_percent": sucess_percent})
         if losses['val'] < best_val_loss or always_save_checkpoint:
             best_val_loss = losses['val']
             if iter_num > 0:

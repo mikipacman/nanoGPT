@@ -1,7 +1,8 @@
 # train a miniature character-level shakespeare model
 # good for debugging and playing on macbooks and such
 
-out_dir = 'out-mini-gpt-gp-8192'
+out_dir = 'out-mini-gpt-gp-8192-prompts'
+prompt_dir = "/home/mpacek/data/prompts/"
 eval_interval = 250 # keep frequent because we'll overfit
 eval_iters = 200
 log_interval = 10 # don't print too too often
@@ -11,7 +12,7 @@ always_save_checkpoint = False
 
 wandb_log = True # override via command line if you like
 wandb_project = 'owt'
-wandb_run_name = 'mini-gpt-gp-8192'
+wandb_run_name = 'mini-gpt-gp-8192-prompts'
 
 dataset = 'gp'
 gradient_accumulation_steps = 64
@@ -34,4 +35,4 @@ warmup_iters = 100 # not super necessary potentially
 
 # on macbook also add
 # device = 'cpu'  # run on cpu only
-# compile = False # do not torch compile the model
+compile = False # do not torch compile the model
