@@ -1,4 +1,5 @@
 # Visualize midi in html
+import argparse
 import glob
 import os
 import random
@@ -6,6 +7,8 @@ import string
 import sys
 
 from tqdm import tqdm
+
+from model import GPTConfig, GPT
 
 sys.path.append("../")
 from scripts.txt_to_midi import single_txt_to_midi
@@ -34,10 +37,10 @@ def html_midi_vis(midis: Dict[str, Dict[str, str]]) -> str:
 <script>
 document.addEventListener('DOMContentLoaded', function() {{
   const collapsibles = document.querySelectorAll('.collapsible');
-  
+
   collapsibles.forEach(function(coll) {{
     const content = coll.nextElementSibling;
-    
+
     coll.addEventListener('click', function() {{
       content.style.display = content.style.display === 'none' ? 'block' : 'none';
     }});
@@ -92,7 +95,7 @@ def file_content_to_midi(file_content, tmp):
 
 # sample some songs for given prompts and generate html vis, Return (html, percent_success)
 @torch.no_grad()
-def sample_songs(model, device, prompt_dir, num_samples=3, max_new_tokens=1024, temperature=0.7, topk=200):
+def sample_songs(model, device, prompt_dir, num_samples=3, max_new_tokens=8192, temperature=0.7, topk=200):
     # tokenizer
     enc = tiktoken.get_encoding("gpt2")
     encode = lambda s: enc.encode(s, allowed_special={"<|endoftext|>"})
@@ -106,13 +109,17 @@ def sample_songs(model, device, prompt_dir, num_samples=3, max_new_tokens=1024, 
         prompts = glob.glob(os.path.join(prompt_dir, "*"))
         for prompt_path in tqdm(prompts, desc="Sampling songs"):
             song_name = os.path.basename(prompt_path).rsplit(".", 1)[0]
-            midis[song_name]["prompt"] = file_content_to_midi(open(prompt_path, "r").read(), tmp)
+            try:
+                midis[song_name]["prompt"] = file_content_to_midi(open(prompt_path, "r").read(), tmp)
+            except:
+                print(f"Failed to convert prompt {song_name} to MIDI")
+                continue
             start_id = encode(open(prompt_path, "r").read())
             x = (torch.tensor(start_id, dtype=torch.long, device=device)[None, ...])
-            y = model.generate(x, max_new_tokens, temperature=temperature, top_k=topk)
             for i in range(num_samples):
                 try:
-                    file_content = decode(y[i].tolist())
+                    y = model.generate(x, max_new_tokens, temperature=temperature, top_k=topk)
+                    file_content = decode(y[0].tolist())
                     midi_file = file_content_to_midi(file_content, tmp)
                 except:
                     print(f"Failed to convert {song_name} to MIDI")
@@ -124,18 +131,31 @@ def sample_songs(model, device, prompt_dir, num_samples=3, max_new_tokens=1024, 
         return html_midi_vis(midis), success / (num_samples * len(prompts))
 
 
-if __name__ == "__main__":
-    midis = {
-        "cannibal corpse": {
-            "prompt": "/home/mp/Projects/gpgpt/data/midi/cannibalcorpse__1ib17y9y__zerothehero.midi",
-            "sample_1": "/home/mp/Projects/gpgpt/data/midi/cannibalcorpse__1ib17y9y__zerothehero.midi",
-            "sample_2": "/home/mp/Projects/gpgpt/data/midi/cannibalcorpse__1ib17y9y__zerothehero.midi",
-        },
-        "metallica": {
-            "prompt": "/home/mp/Projects/gpgpt/data/midi/metallica__...and_justice_for_all.midi",
-            "sample_1": "/home/mp/Projects/gpgpt/data/midi/metallica__...and_justice_for_all.midi",
-        },
-    }
-    html = html_midi_vis(midis)
+def load_model(args):
+    ckpt_path = os.path.join(args.ckpt_dir, 'ckpt.pt')
+    checkpoint = torch.load(ckpt_path, map_location=args.device)
+    gptconf = GPTConfig(**checkpoint['model_args'])
+    model = GPT(gptconf)
+    state_dict = checkpoint['model']
+    unwanted_prefix = '_orig_mod.'
+    for k, v in list(state_dict.items()):
+        if k.startswith(unwanted_prefix):
+            state_dict[k[len(unwanted_prefix):]] = state_dict.pop(k)
+    model.load_state_dict(state_dict)
+    model.to(args.device)
+    return model
 
-    open("midi_vis.html", "w").write(html)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--ckpt_dir", type=str, required=True, help="Path to the model checkpoint")
+    parser.add_argument("--prompt_dir", type=str, required=True, help="Path to the prompt directory")
+    parser.add_argument("--out_html", type=str, required=True, help="Path to the output html")
+    parser.add_argument("--device", type=str, default="cuda", help="Number of samples per prompt")
+    parser.add_argument("--max_new_tokens", type=int, default=8192, help="Maximum number of tokens to generate")
+    args = parser.parse_args()
+
+    # init from a model saved in a specific directory
+    model = load_model(args)
+    html, _ = sample_songs(model, args.device, args.prompt_dir, max_new_tokens=args.max_new_tokens)
+    open(args.out_html, "w").write(html)
