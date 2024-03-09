@@ -39,6 +39,7 @@ eval_interval = 2000
 log_interval = 1
 eval_iters = 200
 eval_only = False # if True, script exits right after the first eval
+gen_tokens = 2048 # number of tokens to generate for each prompt
 always_save_checkpoint = True # if True, always save a checkpoint after each eval
 init_from = 'scratch' # 'scratch' or 'resume' or 'gpt2*'
 # wandb logging
@@ -265,7 +266,7 @@ while True:
     # evaluate the loss on train/val sets and write checkpoints
     if iter_num % eval_interval == 0 and master_process:
         losses = estimate_loss()
-        if prompt_dir: html, sucess_percent = sample_songs(local_model, device, prompt_dir, max_new_tokens=1024)
+        if prompt_dir: html, sucess_percent = sample_songs(local_model, device, prompt_dir, max_new_tokens=gen_tokens)
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
         if wandb_log:
             total_batch = gradient_accumulation_steps * ddp_world_size * batch_size
