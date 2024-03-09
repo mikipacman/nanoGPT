@@ -3,7 +3,7 @@ eval_iters = 40
 log_interval = 10
 wandb_log = True # feel free to turn on
 wandb_project = 'owt'
-wandb_run_name = 'ft-gpt2-gp-1024'
+wandb_run_name = 'ft-gpt2-gp-1024-bigger-lr'
 out_dir = f'out-{wandb_run_name}'
 prompt_dir = "/home/mpacek/data/prompts/"
 
@@ -21,6 +21,5 @@ gradient_accumulation_steps = 8
 max_iters = 40000
 
 # finetune at constant LR
-learning_rate = 2 * 3e-5
+learning_rate = 2 * 3e-3
 decay_lr = False
-dropout = 0.1

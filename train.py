@@ -268,14 +268,20 @@ while True:
         if prompt_dir: html, sucess_percent = sample_songs(local_model, device, prompt_dir, max_new_tokens=1024)
         print(f"step {iter_num}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
         if wandb_log:
-            wandb.log({
+            total_batch = gradient_accumulation_steps * ddp_world_size * batch_size
+            x_logs = {
                 "iter": iter_num,
+                "flops": raw_model.get_flops_per_iter(total_batch) * (iter_num + 1),
+                "tokens": block_size * total_batch * (iter_num + 1),
+            }
+            wandb.log({
+                **x_logs,
                 "train/loss": losses['train'],
                 "val/loss": losses['val'],
                 "lr": lr,
                 "mfu": running_mfu*100, # convert to percentage
             })
-            if prompt_dir: wandb.log({"midi": wandb.Html(html), "success_percent": sucess_percent, "iter": iter_num})
+            if prompt_dir: wandb.log({**x_logs, "midi": wandb.Html(html), "success_percent": sucess_percent})
         if losses['val'] < best_val_loss or always_save_checkpoint:
             best_val_loss = losses['val']
             if iter_num > 0:
